@@ -1,0 +1,14 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import './styles.css';
+import Layout from './components/Layout';
+import Overview from './pages/Overview';
+import Ingestion from './pages/Ingestion';
+import Traces from './pages/Traces';
+import Dependencies from './pages/Dependencies';
+import Logs from './pages/Logs';
+import Metrics from './pages/Metrics';
+import Diagnostics from './pages/Diagnostics';
+import Alerts from './pages/Alerts';
+createRoot(document.getElementById('root')).render(_jsx(BrowserRouter, { children: _jsx(Layout, { children: _jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(Overview, {}) }), _jsx(Route, { path: "/ingest", element: _jsx(Ingestion, {}) }), _jsx(Route, { path: "/traces", element: _jsx(Traces, {}) }), _jsx(Route, { path: "/dependencies", element: _jsx(Dependencies, {}) }), _jsx(Route, { path: "/logs", element: _jsx(Logs, {}) }), _jsx(Route, { path: "/metrics", element: _jsx(Metrics, {}) }), _jsx(Route, { path: "/diagnostics", element: _jsx(Diagnostics, {}) }), _jsx(Route, { path: "/alerts", element: _jsx(Alerts, {}) })] }) }) }));

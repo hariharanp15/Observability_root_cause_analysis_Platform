@@ -1,0 +1,67 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment: { MYSQL_ROOT_PASSWORD: observability, MYSQL_ROOT_HOST: "%" }
+    ports: ["3307:3306"]
+    volumes: ["mysql-data:/var/lib/mysql", "./docker/mysql-init.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro"]
+    healthcheck: { test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pobservability"], interval: 10s, timeout: 5s, retries: 12 }
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck: { test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, timeout: 5s, retries: 12 }
+  ingestion:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: uvicorn backend.app.service_main:app --host 0.0.0.0 --port 8000
+    environment: { SERVICE_KIND: ingestion, BROKER_ENABLED: "true", DATABASE_URL: mysql+pymysql://root:observability@mysql:3306/observability, RABBIT_URL: amqp://guest:guest@rabbitmq:5672/ }
+    depends_on: { mysql: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
+    restart: on-failure
+  query:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: uvicorn backend.app.service_main:app --host 0.0.0.0 --port 8000
+    environment: { SERVICE_KIND: query, DATABASE_URL: mysql+pymysql://root:observability@mysql:3306/observability }
+    depends_on: { mysql: { condition: service_healthy } }
+    restart: on-failure
+  trace-worker:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: python -m backend.app.worker
+    environment: { WORKER_KIND: traces, DATABASE_URL: mysql+pymysql://root:observability@mysql:3306/observability, RABBIT_URL: amqp://guest:guest@rabbitmq:5672/ }
+    depends_on: { mysql: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
+    restart: on-failure
+  log-worker:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: python -m backend.app.worker
+    environment: { WORKER_KIND: logs, DATABASE_URL: mysql+pymysql://root:observability@mysql:3306/observability, RABBIT_URL: amqp://guest:guest@rabbitmq:5672/ }
+    depends_on: { mysql: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
+    restart: on-failure
+  metrics-worker:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: python -m backend.app.worker
+    environment: { WORKER_KIND: metrics, DATABASE_URL: mysql+pymysql://root:observability@mysql:3306/observability, RABBIT_URL: amqp://guest:guest@rabbitmq:5672/ }
+    depends_on: { mysql: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
+    restart: on-failure
+  gateway:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: uvicorn backend.app.gateway:app --host 0.0.0.0 --port 8000
+    environment: { INGESTION_URL: http://ingestion:8000, QUERY_URL: http://query:8000, ORDER_URL: http://order-service:8000 }
+    ports: ["8000:8000"]
+    depends_on: [ingestion, query]
+  order-service:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: uvicorn backend.app.sample_service:app --host 0.0.0.0 --port 8000
+    environment: { SAMPLE_SERVICE: order-service, INGESTION_URL: http://ingestion:8000/api/v1/telemetry, PAYMENT_URL: http://payment-service:8000 }
+    depends_on: [ingestion, payment-service]
+  payment-service:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: uvicorn backend.app.sample_service:app --host 0.0.0.0 --port 8000
+    environment: { SAMPLE_SERVICE: payment-service, INGESTION_URL: http://ingestion:8000/api/v1/telemetry, NOTIFICATION_URL: http://notification-service:8000 }
+    depends_on: [ingestion, notification-service]
+  notification-service:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: uvicorn backend.app.sample_service:app --host 0.0.0.0 --port 8000
+    environment: { SAMPLE_SERVICE: notification-service, INGESTION_URL: http://ingestion:8000/api/v1/telemetry }
+    depends_on: [ingestion]
+  frontend:
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    ports: ["5173:80"]
+    depends_on: [gateway]
+volumes: { mysql-data: {} }
